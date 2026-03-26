@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AR Test — Bergshaven</title>
+<style>
+  body { margin:0; background:#111; color:#fff; font-family:sans-serif;
+         display:flex; flex-direction:column; align-items:center;
+         justify-content:center; min-height:100vh; padding:20px; box-sizing:border-box; }
+  h1 { font-size:22px; margin-bottom:8px; }
+  #status { font-size:14px; color:#aaa; margin-bottom:24px; text-align:center; }
+  button { font-size:18px; padding:18px 36px; border-radius:12px; border:none;
+           background:#4a9ad4; color:#fff; cursor:pointer; margin-bottom:12px;
+           width:100%; max-width:320px; }
+  button:disabled { background:#444; color:#888; }
+  #log { margin-top:16px; font-size:12px; max-width:340px; width:100%; line-height:1.6; }
+  .ok  { color:#3fb950; }
+  .err { color:#f85149; }
+  .inf { color:#aaa; }
+</style>
+</head>
+<body>
+<h1>Bergshaven AR Test</h1>
+<div id="status">Sjekker støtte…</div>
+<button id="btn" disabled>Venter…</button>
+<div id="log"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.158.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+function log(msg, cls) {
+  document.getElementById('log').innerHTML += '<div class="'+(cls||'inf')+'">'+msg+'</div>';
+}
+
+log('Three.js 0.158 lastet ✓','ok');
+
+if(!navigator.xr){
+  log('WebXR: ikke tilgjengelig','err');
+  document.getElementById('status').textContent='✗ WebXR ikke støttet';
+} else {
+  log('WebXR: tilgjengelig ✓','ok');
+  navigator.xr.isSessionSupported('immersive-ar').then(s=>{
+    if(s){
+      log('immersive-ar: STØTTET ✓','ok');
+      document.getElementById('status').textContent='✓ AR klar!';
+      const btn=document.getElementById('btn');
+      btn.textContent='🎥 Start AR';
+      btn.disabled=false;
+      btn.addEventListener('click', startAR);
+    } else {
+      log('immersive-ar: ikke støttet','err');
+      document.getElementById('status').textContent='✗ AR ikke støttet';
+    }
+  });
+}
+
+async function startAR(){
+  document.getElementById('btn').disabled=true;
+  log('Starter AR session…');
+  try {
+    const session = await navigator.xr.requestSession('immersive-ar',{
+      optionalFeatures:['dom-overlay','local-floor'],
+      domOverlay:{root:document.body}
+    });
+    log('Session OK ✓','ok');
+
+    const canvas=document.createElement('canvas');
+    canvas.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;z-index:100';
+    document.body.appendChild(canvas);
+
+    const renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true});
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth,window.innerHeight);
+    renderer.xr.enabled=true;
+    await renderer.xr.setSession(session);
+    log('Renderer XR satt ✓','ok');
+
+    const scene=new THREE.Scene();
+    const cam=new THREE.PerspectiveCamera(70,window.innerWidth/window.innerHeight,0.01,100);
+    scene.add(new THREE.AmbientLight(0xffffff,3));
+
+    const box=new THREE.Mesh(
+      new THREE.BoxGeometry(2,4,2),
+      new THREE.MeshBasicMaterial({color:0x4a9ad4,transparent:true,opacity:0.8,wireframe:false})
+    );
+    box.position.set(0,0,-4);
+    scene.add(box);
+    log('Boks lagt til scene','ok');
+
+    const closeBtn=document.createElement('button');
+    closeBtn.textContent='✕ Avslutt AR';
+    closeBtn.style.cssText='position:fixed;top:24px;right:24px;z-index:200;padding:14px 22px;font-size:16px;background:rgba(0,0,0,0.8);color:#fff;border:2px solid #fff;border-radius:10px;width:auto';
+    document.body.appendChild(closeBtn);
+    closeBtn.onclick=()=>session.end();
+
+    session.addEventListener('end',()=>{
+      canvas.remove(); closeBtn.remove();
+      document.getElementById('btn').disabled=false;
+      document.getElementById('btn').textContent='🎥 Start AR igjen';
+      log('AR avsluttet');
+    });
+
+    renderer.setAnimationLoop((_,frame)=>{
+      if(!frame)return;
+      box.rotation.y+=0.01;
+      renderer.render(scene,cam);
+    });
+
+  } catch(e){
+    log('FEIL: '+e.name+': '+e.message,'err');
+    document.getElementById('btn').disabled=false;
+    document.getElementById('btn').textContent='🎥 Prøv igjen';
+  }
+}
+</script>
+</body>
+</html>
